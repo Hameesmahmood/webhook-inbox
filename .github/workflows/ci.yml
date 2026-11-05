@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test --no-build -c Release
+
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker compose up --build --detach --wait --wait-timeout 180 db
+      - run: docker compose up --build --detach
+      - name: Wait for the API to be ready
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS localhost:8080/readyz && exit 0
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+      - name: The worker is running
+        run: test "$(docker compose ps --status running --services | grep -c worker)" = 1
+      - if: always()
+        run: docker compose down --volumes

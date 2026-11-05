@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WebhookInbox.Api/WebhookInbox.Api.csproj" />
+    <Project Path="src/WebhookInbox.Core/WebhookInbox.Core.csproj" />
+    <Project Path="src/WebhookInbox.Worker/WebhookInbox.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WebhookInbox.Tests/WebhookInbox.Tests.csproj" />
+  </Folder>
+</Solution>
