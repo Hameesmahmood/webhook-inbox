@@ -1,4 +1,5 @@
 using Npgsql;
+using WebhookInbox.Api;
 using WebhookInbox.Core;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("Inbox")
     ?? throw new InvalidOperationException("ConnectionStrings:Inbox is required.");
 builder.Services.AddInboxStorage(connectionString);
+builder.Services.Configure<InboxOptions>(builder.Configuration.GetSection(InboxOptions.Section));
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();
@@ -30,6 +32,8 @@ app.MapGet("/readyz", async (NpgsqlDataSource dataSource, CancellationToken ct) 
         return Results.Problem("The database is unavailable.", statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 });
+
+app.MapIngest();
 
 app.Run();
 

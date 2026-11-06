@@ -20,6 +20,19 @@ public sealed class PostgresFixture : IAsyncLifetime
         await Migrator.MigrateAsync(DataSource);
     }
 
+    /// <summary>Every integration test starts from empty tables.</summary>
+    public async Task ResetAsync()
+    {
+        await using var command = DataSource.CreateCommand("TRUNCATE events, deliveries RESTART IDENTITY CASCADE");
+        await command.ExecuteNonQueryAsync();
+    }
+
+    public async Task<long> CountAsync(string sql)
+    {
+        await using var command = DataSource.CreateCommand(sql);
+        return (long)(await command.ExecuteScalarAsync())!;
+    }
+
     public async Task DisposeAsync()
     {
         await DataSource.DisposeAsync();
