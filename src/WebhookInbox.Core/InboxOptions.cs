@@ -8,6 +8,9 @@ public sealed class InboxOptions
     public Dictionary<string, SourceOptions> Sources { get; set; } = [];
 
     public int MaxBodyBytes { get; set; } = 1024 * 1024;
+
+    /// <summary>Bearer key for the admin API. When it isn't set, the admin API refuses every request.</summary>
+    public string? AdminKey { get; set; }
 }
 
 public sealed class SourceOptions

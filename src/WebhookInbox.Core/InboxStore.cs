@@ -15,6 +15,31 @@ public sealed record ClaimedDelivery(
     byte[] Payload,
     string Headers);
 
+public sealed record EventSummary(long Id, string Source, string? IdempotencyKey, DateTime ReceivedAt, int SizeBytes);
+
+public sealed record EventRecord(long Id, string Source, string? IdempotencyKey, DateTime ReceivedAt, byte[] Payload, string Headers);
+
+public sealed record DeliveryRecord(
+    long Id,
+    long EventId,
+    string Source,
+    string Destination,
+    string Status,
+    int Attempts,
+    DateTime NextAttemptAt,
+    int? LastStatusCode,
+    string? LastError,
+    DateTime? DeliveredAt);
+
+public sealed record InboxStats(long Pending, long Leased, long Delivered, long Dead, double? OldestDueSeconds);
+
+public enum ReplayOutcome
+{
+    Replayed,
+    NotFound,
+    InProgress,
+}
+
 public enum IngestOutcome
 {
     Stored,
@@ -119,6 +144,117 @@ public sealed class InboxStore(NpgsqlDataSource dataSource)
             WHERE d.id = expired.id
             """, new { MaxAttempts = maxAttempts }, cancellationToken: ct));
     }
+
+    // Reads for the admin API. Lists are newest first, paged by ID so new rows never shift a page.
+
+    public async Task<IReadOnlyList<EventSummary>> ListEventsAsync(string? source, long? before, int take, CancellationToken ct = default)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+        var rows = await connection.QueryAsync<EventSummary>(new CommandDefinition("""
+            SELECT id AS Id, source AS Source, idempotency_key AS IdempotencyKey, received_at AS ReceivedAt,
+                   octet_length(payload) AS SizeBytes
+            FROM events
+            WHERE (@Source::text IS NULL OR source = @Source)
+              AND (@Before::bigint IS NULL OR id < @Before)
+            ORDER BY id DESC
+            LIMIT @Take
+            """, new { Source = source, Before = before, Take = take }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    public async Task<(EventRecord Event, IReadOnlyList<DeliveryRecord> Deliveries)?> GetEventAsync(long id, CancellationToken ct = default)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+        var found = await connection.QuerySingleOrDefaultAsync<EventRecord>(new CommandDefinition("""
+            SELECT id AS Id, source AS Source, idempotency_key AS IdempotencyKey, received_at AS ReceivedAt,
+                   payload AS Payload, headers::text AS Headers
+            FROM events
+            WHERE id = @Id
+            """, new { Id = id }, cancellationToken: ct));
+        if (found is null)
+        {
+            return null;
+        }
+
+        var deliveries = await ListDeliveriesAsync(connection, null, null, null, found.Id, 1000, ct);
+        return (found, deliveries);
+    }
+
+    public async Task<IReadOnlyList<DeliveryRecord>> ListDeliveriesAsync(string? status, string? source, long? before, int take, CancellationToken ct = default)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+        return await ListDeliveriesAsync(connection, status, source, before, null, take, ct);
+    }
+
+    private static async Task<IReadOnlyList<DeliveryRecord>> ListDeliveriesAsync(
+        NpgsqlConnection connection, string? status, string? source, long? before, long? eventId, int take, CancellationToken ct)
+    {
+        var rows = await connection.QueryAsync<DeliveryRecord>(new CommandDefinition("""
+            SELECT d.id AS Id, d.event_id AS EventId, e.source AS Source, d.destination AS Destination, d.status AS Status,
+                   d.attempts AS Attempts, d.next_attempt_at AS NextAttemptAt, d.last_status_code AS LastStatusCode,
+                   d.last_error AS LastError, d.delivered_at AS DeliveredAt
+            FROM deliveries d
+            JOIN events e ON e.id = d.event_id
+            WHERE (@Status::text IS NULL OR d.status = @Status)
+              AND (@Source::text IS NULL OR e.source = @Source)
+              AND (@Before::bigint IS NULL OR d.id < @Before)
+              AND (@EventId::bigint IS NULL OR d.event_id = @EventId)
+            ORDER BY d.id DESC
+            LIMIT @Take
+            """, new { Status = status, Source = source, Before = before, EventId = eventId, Take = take }, cancellationToken: ct));
+        return rows.AsList();
+    }
+
+    public async Task<InboxStats> GetStatsAsync(CancellationToken ct = default)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+        return await connection.QuerySingleAsync<InboxStats>(new CommandDefinition("""
+            SELECT count(*) FILTER (WHERE status = 'pending')   AS Pending,
+                   count(*) FILTER (WHERE status = 'leased')    AS Leased,
+                   count(*) FILTER (WHERE status = 'delivered') AS Delivered,
+                   count(*) FILTER (WHERE status = 'dead')      AS Dead,
+                   EXTRACT(EPOCH FROM now() - min(next_attempt_at)
+                       FILTER (WHERE status = 'pending' AND next_attempt_at <= now()))::float8 AS OldestDueSeconds
+            FROM deliveries
+            """, cancellationToken: ct));
+    }
+
+    /// <summary>
+    /// Sends a finished delivery again, with a fresh set of attempts. A delivery that's still
+    /// pending or leased is refused, because replaying it would race the worker that holds it.
+    /// </summary>
+    public async Task<ReplayOutcome> ReplayAsync(long deliveryId, CancellationToken ct = default)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+        var replayed = await connection.ExecuteAsync(new CommandDefinition($"""
+            UPDATE deliveries
+            SET {ResetForReplay}
+            WHERE id = @Id AND status IN ('dead', 'delivered')
+            """, new { Id = deliveryId }, cancellationToken: ct));
+        if (replayed == 1)
+        {
+            return ReplayOutcome.Replayed;
+        }
+
+        var exists = await connection.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "SELECT EXISTS (SELECT 1 FROM deliveries WHERE id = @Id)", new { Id = deliveryId }, cancellationToken: ct));
+        return exists ? ReplayOutcome.InProgress : ReplayOutcome.NotFound;
+    }
+
+    /// <summary>Replays every dead delivery for one source, for use after fixing the consumer.</summary>
+    public async Task<int> ReplayDeadAsync(string source, CancellationToken ct = default)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+        return await connection.ExecuteAsync(new CommandDefinition($"""
+            UPDATE deliveries d
+            SET {ResetForReplay}
+            FROM events e
+            WHERE e.id = d.event_id AND e.source = @Source AND d.status = 'dead'
+            """, new { Source = source }, cancellationToken: ct));
+    }
+
+    private const string ResetForReplay =
+        "status = 'pending', attempts = 0, next_attempt_at = now(), last_status_code = NULL, last_error = NULL, delivered_at = NULL";
 
     // Each result below only applies while the lease token still matches. A worker that
     // lost its lease gets false back, and the newer state is left alone.

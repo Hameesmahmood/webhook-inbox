@@ -34,6 +34,7 @@ app.MapGet("/readyz", async (NpgsqlDataSource dataSource, CancellationToken ct) 
 });
 
 app.MapIngest();
+app.MapAdmin();
 
 app.Run();
 
