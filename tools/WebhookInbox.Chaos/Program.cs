@@ -108,7 +108,12 @@ var json = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteInd
 Console.WriteLine(json);
 if (options.Out is not null)
 {
-    Directory.CreateDirectory(Path.GetDirectoryName(options.Out)!);
+    var folder = Path.GetDirectoryName(Path.GetFullPath(options.Out));
+    if (!string.IsNullOrEmpty(folder))
+    {
+        Directory.CreateDirectory(folder);
+    }
+
     await File.WriteAllTextAsync(options.Out, json + "\n");
 }
 

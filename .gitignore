@@ -6,3 +6,4 @@ obj/
 .idea/
 TestResults/
 .env
+chaos-results.json
