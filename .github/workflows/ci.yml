@@ -35,7 +35,27 @@ jobs:
           done
           docker compose logs
           exit 1
-      - name: The worker is running
-        run: test "$(docker compose ps --status running --services | grep -c worker)" = 1
+      - name: The worker and demo consumer are running
+        run: |
+          running="$(docker compose ps --status running --services)"
+          echo "$running" | grep -qx worker
+          echo "$running" | grep -qx sink
       - if: always()
         run: docker compose down --volumes
+
+  chaos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Send 2,000 events while killing workers
+        run: ./scripts/chaos.sh 2000 chaos-results.json
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: chaos-results
+          path: chaos-results.json
+          if-no-files-found: ignore

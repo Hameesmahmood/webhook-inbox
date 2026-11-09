@@ -17,10 +17,15 @@ services:
     build:
       context: .
       args:
-        PROJECT: WebhookInbox.Api
+        PROJECT_DIR: src/WebhookInbox.Api
+        APP: WebhookInbox.Api
     environment:
       ConnectionStrings__Inbox: Host=db;Username=inbox;Password=inbox;Database=inbox
       ASPNETCORE_URLS: http://+:8080
+      Inbox__AdminKey: ${INBOX_ADMIN_KEY:-local-admin-key}
+      # One example source. Add your own the same way: Inbox__Sources__<name>__...
+      Inbox__Sources__demo__IdempotencyHeader: X-Event-Id
+      Inbox__Sources__demo__Destinations__0: http://sink:8080/hooks
     ports:
       - "8080:8080"
     depends_on:
@@ -31,12 +36,25 @@ services:
     build:
       context: .
       args:
-        PROJECT: WebhookInbox.Worker
+        PROJECT_DIR: src/WebhookInbox.Worker
+        APP: WebhookInbox.Worker
     environment:
       ConnectionStrings__Inbox: Host=db;Username=inbox;Password=inbox;Database=inbox
     depends_on:
       db:
         condition: service_healthy
+
+  # A demo consumer that records what it receives. Replace it with your own app.
+  sink:
+    build:
+      context: .
+      args:
+        PROJECT_DIR: tools/WebhookInbox.Sink
+        APP: WebhookInbox.Sink
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+    ports:
+      - "8081:8080"
 
 volumes:
   db:

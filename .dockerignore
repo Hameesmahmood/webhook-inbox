@@ -2,4 +2,4 @@ bin/
 obj/
 .git/
 **/TestResults/
-docs/
+docs/IMPLEMENTATION_PLAN.md

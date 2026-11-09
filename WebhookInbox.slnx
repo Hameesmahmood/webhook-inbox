@@ -7,4 +7,8 @@
   <Folder Name="/tests/">
     <Project Path="tests/WebhookInbox.Tests/WebhookInbox.Tests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/WebhookInbox.Chaos/WebhookInbox.Chaos.csproj" />
+    <Project Path="tools/WebhookInbox.Sink/WebhookInbox.Sink.csproj" />
+  </Folder>
 </Solution>

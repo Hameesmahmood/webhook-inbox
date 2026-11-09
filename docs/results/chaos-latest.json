@@ -1,0 +1,18 @@
+{
+  "runId": "a2d8bcf1",
+  "finishedAt": "2026-11-09T10:58:04.94041+00:00",
+  "events": 10000,
+  "acknowledged": 10000,
+  "rejected": 0,
+  "delivered": 10000,
+  "deadLettered": 0,
+  "lost": 0,
+  "duplicates": 110,
+  "unexpected": 0,
+  "workerKills": 32,
+  "workers": 3,
+  "consumerRequests": 12612,
+  "drained": true,
+  "ingestSeconds": 13.4,
+  "totalSeconds": 111.5
+}

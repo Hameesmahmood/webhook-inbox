@@ -1,0 +1,19 @@
+# Settings for the chaos run: three workers, short timings so a run finishes in minutes,
+# and a slow consumer that fails one request in five.
+services:
+  worker:
+    deploy:
+      replicas: 3
+    environment:
+      Delivery__Lease: "00:00:05"
+      Delivery__HttpTimeout: "00:00:02"
+      Delivery__PollInterval: "00:00:00.100"
+      Delivery__SweepInterval: "00:00:01"
+      Delivery__BaseDelay: "00:00:00.200"
+      Delivery__MaxDelay: "00:00:03"
+      Delivery__MaxAttempts: "10"
+
+  sink:
+    environment:
+      Sink__FailRate: "0.2"
+      Sink__MaxLatencyMs: "200"
