@@ -31,6 +31,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # So `docker compose up --wait` returns only once the API answers. The image has no curl, so plain bash.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/8080 && printf 'GET /readyz HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '^HTTP/1.1 200' <&3"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
 
   worker:
     build:

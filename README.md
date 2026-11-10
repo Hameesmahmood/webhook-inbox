@@ -125,8 +125,8 @@ It exits non-zero if anything was lost.
 ## API
 
 Errors use [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details. Lists use keyset
-pagination (`limit` up to 200, `cursor`). Everything except ingest needs
-`Authorization: Bearer <admin key>`.
+pagination (`limit` up to 200, `cursor`). Every `/v1` endpoint except ingest needs
+`Authorization: Bearer <admin key>`. The health checks are open.
 
 | Method and path | Purpose | Responses |
 | --- | --- | --- |

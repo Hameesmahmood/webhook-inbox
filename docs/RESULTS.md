@@ -80,6 +80,7 @@ times and consumer failures are random.
 | --- | --- | --- | --- | --- | --- |
 | `6b655ed2`, 10 Nov (headline) | 10,000 | 35 | 0 | 154 | Pass |
 | `a2d8bcf1`, 9 Nov | 10,000 | 32 | 0 | 110 | Pass |
+| CI on commit `d1a6c4b`, 10 Nov | 2,000 | 9 | 0 | 17 | Pass |
 | CI on commit `b35e9ec`, 9 Nov | 2,000 | 9 | 0 | 27 | Pass |
 | `a664954c`, 9 Nov, **worker deliberately broken** | 1,000 | 2 | **193** | 1 | Fail, as it should |
 
