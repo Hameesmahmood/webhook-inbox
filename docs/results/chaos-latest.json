@@ -1,18 +1,18 @@
 {
-  "runId": "a2d8bcf1",
-  "finishedAt": "2026-11-09T10:58:04.94041+00:00",
+  "runId": "6b655ed2",
+  "finishedAt": "2026-11-10T10:58:45.642001+00:00",
   "events": 10000,
   "acknowledged": 10000,
   "rejected": 0,
   "delivered": 10000,
   "deadLettered": 0,
   "lost": 0,
-  "duplicates": 110,
+  "duplicates": 154,
   "unexpected": 0,
-  "workerKills": 32,
+  "workerKills": 35,
   "workers": 3,
-  "consumerRequests": 12612,
+  "consumerRequests": 12704,
   "drained": true,
   "ingestSeconds": 13.4,
-  "totalSeconds": 111.5
+  "totalSeconds": 123.5
 }

@@ -57,5 +57,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: chaos-results
-          path: chaos-results.json
+          path: |
+            chaos-results.json
+            chaos-results-timeline.json
           if-no-files-found: ignore

@@ -19,8 +19,11 @@ var workers = await Docker($"{options.Compose} ps -q worker");
 var workerIds = workers.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 Console.WriteLine($"Run {runId}: {options.Events} events, {workerIds.Length} workers, one SIGKILL every {options.KillEvery.TotalSeconds}s");
 
+// One clock for the whole run, so samples and kills share a time axis.
+var clock = Stopwatch.StartNew();
 using var stopKilling = new CancellationTokenSource();
 var kills = 0;
+var killTimes = new ConcurrentBag<double>();
 var killer = Task.Run(async () =>
 {
     while (!stopKilling.IsCancellationRequested)
@@ -34,15 +37,27 @@ var killer = Task.Run(async () =>
         var victim = workerIds[Random.Shared.Next(workerIds.Length)];
         await Docker($"kill --signal KILL {victim}");
         Interlocked.Increment(ref kills);
+        killTimes.Add(Math.Round(clock.Elapsed.TotalSeconds, 1));
         await Task.Delay(TimeSpan.FromSeconds(1));
         await Docker($"start {victim}");
     }
 });
 
 // Send every event, resending on failure as a real provider would. The idempotency key makes resends safe.
+// Record the queue once a second, for the chart in docs/RESULTS.md.
+using var stopSampling = new CancellationTokenSource();
+var samples = new ConcurrentQueue<Sample>();
+var sampler = Task.Run(async () =>
+{
+    while (!stopSampling.IsCancellationRequested)
+    {
+        await TakeSample();
+        await Task.Delay(1000).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+    }
+});
+
 var acked = new ConcurrentDictionary<string, bool>();
 var rejected = 0;
-var clock = Stopwatch.StartNew();
 using (var limit = new SemaphoreSlim(options.Concurrency))
 {
     await Task.WhenAll(Enumerable.Range(0, options.Events).Select(async i =>
@@ -74,6 +89,9 @@ var drained = await WaitForDrain();
 var drainSeconds = clock.Elapsed.TotalSeconds;
 stopKilling.Cancel();
 await killer;
+stopSampling.Cancel();
+await sampler;
+await TakeSample();
 await Docker($"{options.Compose} up --detach --no-recreate worker");
 
 var sink = await http.GetFromJsonAsync<SinkReport>($"{options.Sink}/received") ?? throw new InvalidOperationException("The sink sent no report.");
@@ -115,6 +133,10 @@ if (options.Out is not null)
     }
 
     await File.WriteAllTextAsync(options.Out, json + "\n");
+
+    var timeline = new { runId, samples = samples.OrderBy(s => s.T), kills = killTimes.Order() };
+    var timelinePath = Path.Combine(folder ?? "", Path.GetFileNameWithoutExtension(options.Out) + "-timeline.json");
+    await File.WriteAllTextAsync(timelinePath, JsonSerializer.Serialize(timeline, JsonSerializerOptions.Web) + "\n");
 }
 
 var passed = drained && rejected == 0 && lost == 0 && unexpected == 0;
@@ -150,6 +172,26 @@ async Task<string?> SendUntilAcknowledged(int i)
     }
 
     return null;
+}
+
+async Task TakeSample()
+{
+    try
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{options.Api}/v1/stats");
+        request.Headers.Authorization = admin;
+        var stats = await (await http.SendAsync(request)).Content.ReadFromJsonAsync<JsonElement>();
+        samples.Enqueue(new Sample(
+            Math.Round(clock.Elapsed.TotalSeconds, 1),
+            stats.GetProperty("pending").GetInt64(),
+            stats.GetProperty("leased").GetInt64(),
+            stats.GetProperty("delivered").GetInt64(),
+            stats.GetProperty("dead").GetInt64()));
+    }
+    catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException)
+    {
+        // A missed sample leaves a gap in the chart; it never fails the run.
+    }
 }
 
 async Task<bool> WaitForDrain()
@@ -223,6 +265,8 @@ static async Task<string> Docker(string arguments)
     await process.WaitForExitAsync();
     return output.Trim();
 }
+
+sealed record Sample(double T, long Pending, long Leased, long Delivered, long Dead);
 
 sealed record SinkReport(long Requests, Dictionary<string, int> Accepted);
 
