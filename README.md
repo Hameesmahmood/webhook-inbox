@@ -110,6 +110,15 @@ curl localhost:8081/received
 
 Stop everything with `docker compose down --volumes`.
 
+### Watch it survive a crash
+
+`python3 scripts/demo.py` (with the stack running) sends 1,000 webhooks, kills the worker with
+`SIGKILL` partway through delivery, starts a new one, and checks every acknowledged event against
+what the consumer received. A recording of a real run, one of three recorded; none of the three lost
+an event (pauses over 2 s shortened, including the 30-second lease wait):
+
+![A terminal recording of scripts/demo.py: 1,000 webhooks sent, the worker killed mid-delivery while the API keeps accepting, a new worker started, and all 1,000 delivered with 0 lost.](docs/demo.svg)
+
 ### Run the chaos test yourself
 
 ```bash
